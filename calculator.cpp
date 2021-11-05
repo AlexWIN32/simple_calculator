@@ -1,6 +1,7 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <stack>
 #include <string>
 
 class Argument
@@ -105,15 +106,32 @@ int main(int argc, char **argv)
 
     std::string lit;
 
-    std::unique_ptr<Expression> last;
+    std::unique_ptr<Expression> last, prev;
+
+    std::stack<std::unique_ptr<Expression>> expressions;
+
+    std::string parsed;
 
     auto ptr = argv[1];
     while(*ptr != '\0'){
+        if(*ptr == '('){
+            expressions.push(std::move(last));
 
-        if(std::find(digitsStr.cbegin(), digitsStr.cend(), *ptr) != digitsStr.cend())
+            lit = "";
+        }else if(*ptr == ')'){
+            if(lit.empty() == false)
+                last->SetRight(std::make_unique<Literal>(std::stof(lit)));
+            else if(prev != nullptr)
+                last->SetRight(std::move(prev));
+
+            prev = std::move(last);
+            last = std::move(expressions.top());
+            expressions.pop();
+
+            lit = "";
+        }else if(std::find(digitsStr.cbegin(), digitsStr.cend(), *ptr) != digitsStr.cend())
             lit += *ptr;
-
-        if(std::find(operatorsStr.cbegin(), operatorsStr.cend(), *ptr) != operatorsStr.cend()){
+        else if(std::find(operatorsStr.cbegin(), operatorsStr.cend(), *ptr) != operatorsStr.cend()){
             Expression::Method method = Expression::Method::NotDefined;
 
             switch(*ptr){
@@ -133,10 +151,15 @@ int main(int argc, char **argv)
 
             if(last == nullptr){
                 last = std::make_unique<Expression>(method);
-                last->SetLeft(std::make_unique<Literal>(std::stof(lit)));
-
+                if(lit.empty() == false)
+                    last->SetLeft(std::make_unique<Literal>(std::stof(lit)));
+                else if(prev != nullptr)
+                    last->SetLeft(std::move(prev));
             }else{
-                last->SetRight(std::make_unique<Literal>(std::stof(lit)));
+                if(lit.empty() == false)
+                    last->SetRight(std::make_unique<Literal>(std::stof(lit)));
+                else if(prev != nullptr)
+                    last->SetRight(std::move(prev));
 
                 auto newExp = std::make_unique<Expression>(method);
                 newExp->SetLeft(std::move(last));
@@ -146,10 +169,17 @@ int main(int argc, char **argv)
             lit = "";
         }
 
+        parsed+=*ptr;
         ptr++;
     }
 
-    last->SetRight(std::make_unique<Literal>(std::stof(lit)));
+    if(last != nullptr){
+        if(lit.empty() == false)
+            last->SetRight(std::make_unique<Literal>(std::stof(lit)));
+        else if(prev != nullptr)
+            last->SetRight(std::move(prev));
+    }else
+        last = std::move(prev);
 
     if(last != nullptr)
         std::cout << "result: " << last->Evaluate() << std::endl;
