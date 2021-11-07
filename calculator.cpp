@@ -13,6 +13,13 @@ public:
 class Expression : public virtual Argument
 {
 public:
+    virtual void SetLeft(std::unique_ptr<Argument> &&Left) = 0;
+    virtual void SetRight(std::unique_ptr<Argument> &&Right) = 0;
+};
+
+class ArithmeticOperation : public virtual Expression
+{
+public:
     enum class Method
     {
         NotDefined = 0,
@@ -26,10 +33,23 @@ private:
     std::unique_ptr<Argument> right;
     Method method = Method::NotDefined;
 public:
-    ~Expression();
-    Expression(Method Method);
-    void SetLeft(std::unique_ptr<Argument> &&Left);
-    void SetRight(std::unique_ptr<Argument> &&Right);
+    ~ArithmeticOperation();
+    ArithmeticOperation(Method Method);
+    void SetLeft(std::unique_ptr<Argument> &&Left) override;
+    void SetRight(std::unique_ptr<Argument> &&Right) override;
+    float Evaluate() const override;
+};
+
+class Power : public virtual Expression
+{
+private:
+    std::unique_ptr<Argument> left;
+    std::unique_ptr<Argument> right;
+public:
+    ~Power();
+    Power();
+    void SetLeft(std::unique_ptr<Argument> &&Left) override;
+    void SetRight(std::unique_ptr<Argument> &&Right) override;
     float Evaluate() const override;
 };
 
@@ -42,24 +62,24 @@ public:
     float Evaluate() const override;
 };
 
-Expression::~Expression() = default;
+ArithmeticOperation::~ArithmeticOperation() = default;
 
-Expression::Expression(Method Method)
+ArithmeticOperation::ArithmeticOperation(Method Method)
     :  method(Method)
 {
 }
 
-void Expression::SetLeft(std::unique_ptr<Argument> &&Left)
+void ArithmeticOperation::SetLeft(std::unique_ptr<Argument> &&Left)
 {
     left = std::move(Left);
 }
 
-void Expression::SetRight(std::unique_ptr<Argument> &&Right)
+void ArithmeticOperation::SetRight(std::unique_ptr<Argument> &&Right)
 {
     right = std::move(Right);
 }
 
-float Expression::Evaluate() const
+float ArithmeticOperation::Evaluate() const
 {
     float leftRes = left->Evaluate();
     float rightRes = right->Evaluate();
@@ -84,6 +104,28 @@ float Expression::Evaluate() const
     }
 }
 
+Power::~Power() = default;
+
+Power::Power() = default;
+
+void Power::SetLeft(std::unique_ptr<Argument> &&Left)
+{
+    left = std::move(Left);
+}
+
+void Power::SetRight(std::unique_ptr<Argument> &&Right)
+{
+    right = std::move(Right);
+}
+
+float Power::Evaluate() const
+{
+    auto leftVal = left->Evaluate();
+    auto rightVal = right->Evaluate();
+
+    return pow(leftVal, rightVal);
+}
+
 Literal::Literal(float Value)
     : val(Value)
 {
@@ -103,6 +145,7 @@ int main(int argc, char **argv)
 
     std::string digitsStr = "0123456789";
     std::string operatorsStr = "+-/*";
+    std::string powStr = "pow";
 
     std::string lit;
 
@@ -131,26 +174,51 @@ int main(int argc, char **argv)
             lit = "";
         }else if(std::find(digitsStr.cbegin(), digitsStr.cend(), *ptr) != digitsStr.cend())
             lit += *ptr;
-        else if(std::find(operatorsStr.cbegin(), operatorsStr.cend(), *ptr) != operatorsStr.cend()){
-            Expression::Method method = Expression::Method::NotDefined;
+        else if(std::find(powStr.cbegin(), powStr.cend(), *ptr) != powStr.cend()){
+            lit += *ptr;
+
+            if(lit == "pow"){
+
+                lit = "";
+            }
+        }else if(*ptr == ','){
+            auto newExp = std::make_unique<Power>();
+
+            if(last != nullptr){
+                if(lit.empty() == false)
+                    last->SetRight(std::make_unique<Literal>(std::stof(lit)));
+                else if(prev != nullptr)
+                    last->SetRight(std::move(prev));
+
+                newExp->SetLeft(std::move(last));
+            }else if(prev != nullptr)
+                newExp->SetLeft(std::move(prev));
+            else if(lit.empty() == false)
+                newExp->SetLeft(std::make_unique<Literal>(std::stof(lit)));
+
+            last = std::move(newExp);
+
+            lit = "";
+        }else if(std::find(operatorsStr.cbegin(), operatorsStr.cend(), *ptr) != operatorsStr.cend()){
+            ArithmeticOperation::Method method = ArithmeticOperation::Method::NotDefined;
 
             switch(*ptr){
             case '+':
-                method = Expression::Method::Add;
+                method = ArithmeticOperation::Method::Add;
                 break;
             case '-':
-                method = Expression::Method::Subtract;
+                method = ArithmeticOperation::Method::Subtract;
                 break;
             case '/':
-                method = Expression::Method::Divide;
+                method = ArithmeticOperation::Method::Divide;
                 break;
             case '*':
-                method = Expression::Method::Multiply;
+                method = ArithmeticOperation::Method::Multiply;
                 break;
             }
 
             if(last == nullptr){
-                last = std::make_unique<Expression>(method);
+                last = std::make_unique<ArithmeticOperation>(method);
                 if(lit.empty() == false)
                     last->SetLeft(std::make_unique<Literal>(std::stof(lit)));
                 else if(prev != nullptr)
@@ -161,7 +229,7 @@ int main(int argc, char **argv)
                 else if(prev != nullptr)
                     last->SetRight(std::move(prev));
 
-                auto newExp = std::make_unique<Expression>(method);
+                auto newExp = std::make_unique<ArithmeticOperation>(method);
                 newExp->SetLeft(std::move(last));
                 last = std::move(newExp);
             }
